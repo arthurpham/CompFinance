@@ -1254,6 +1254,37 @@ LPXLOPER12 xSobolPoints(
 	return from_matrix(pts);
 }
 
+extern "C" __declspec(dllexport)
+LPXLOPER12 xTarf(
+    double              strike,
+    double              Klower,
+    double              Kupper,
+    double              KKnockout,
+    double              stepUpRatio,
+    double              TARFTarget,
+    double              maturity,
+    double              monitorFreq,
+    LPXLOPER12          xid)
+{
+    FreeAllTempMemory();
+
+    const string id = getString(xid);
+
+    //  Make sure we have an id
+    if (id.empty()) return TempErr12(xlerrNA);
+
+    //  We create 2 products, one for valuation and one for risk
+    unique_ptr<Product<double>> prd = make_unique<TARF<double>>(
+        strike, Klower, Kupper, KKnockout, stepUpRatio, TARFTarget, maturity, monitorFreq);
+    unique_ptr<Product<Number>> riskPrd = make_unique<TARF<Number>>(
+        strike, Klower, Kupper, KKnockout, stepUpRatio, TARFTarget, maturity, monitorFreq);
+
+    //  And move them into the map
+    productStore[id] = make_pair(move(prd), move(riskPrd));
+
+    return TempStr12(id);
+}
+
 //	Registers
 
 extern "C" __declspec(dllexport) int xlAutoOpen(void)
@@ -1596,6 +1627,18 @@ extern "C" __declspec(dllexport) int xlAutoOpen(void)
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L"Visualization of Sobol points"),
+        (LPXLOPER12)TempStr12(L""));
+
+    Excel12f(xlfRegister, 0, 11, (LPXLOPER12)&xDLL,
+        (LPXLOPER12)TempStr12(L"xTarf"),
+        (LPXLOPER12)TempStr12(L"QBBBBBBBBQ"),
+        (LPXLOPER12)TempStr12(L"xTarf"),
+        (LPXLOPER12)TempStr12(L"strike, Klower, Kupper, KKnockout, stepUpRatio, TARFTarget, maturity, monitoringFreq, id"),
+        (LPXLOPER12)TempStr12(L"1"),
+        (LPXLOPER12)TempStr12(L"myOwnCppFunctions"),
+        (LPXLOPER12)TempStr12(L""),
+        (LPXLOPER12)TempStr12(L""),
+        (LPXLOPER12)TempStr12(L"Initializes a TARF in memory"),
         (LPXLOPER12)TempStr12(L""));
 
 	/* Free the XLL filename */

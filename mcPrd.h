@@ -573,3 +573,166 @@ public:
     }
 };
 
+
+template <class T>
+class TARF : public Product<T>
+{
+    double              myStrike;
+    double              myKLower;
+    double              myKUpper;
+    double              myKKnockout;
+    double              myStepUpRatio;
+    double              myTARFTarget;
+
+    Time                myMaturity;
+
+    vector<Time>        myTimeline;
+    vector<SampleDef>   myDefline;
+
+    vector<string>      myLabels;
+
+public:
+    TARF(const double    strike,
+        const double    Klower,
+        const double    Kupper,
+        const double    KKnockout,
+        const double    stepUpRatio,
+        const double    TARFTarget,
+        const Time      maturity,
+        const Time      monitorFreq)
+        : myStrike(strike),
+        myKLower(Klower),
+        myKUpper(Kupper),
+        myKKnockout(KKnockout),
+        myStepUpRatio(stepUpRatio),
+        myTARFTarget(TARFTarget),
+        myMaturity(maturity),
+        myLabels(1)
+    {
+        //  Timeline
+
+        //  Today
+        myTimeline.push_back(systemTime);
+        Time t = systemTime + monitorFreq;
+
+        //  Barrier monitoring
+        while (myMaturity - t > ONE_HOUR)
+        {
+            myTimeline.push_back(t);
+            t += monitorFreq;
+        }
+
+        //  Maturity
+        myTimeline.push_back(myMaturity);
+
+        //
+
+        //  Defline
+
+        const size_t n = myTimeline.size();
+        myDefline.resize(n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            myDefline[i].numeraire = true;
+
+            //  spot(t) = forward (t, t) needed on every step
+            myDefline[i].forwardMats.push_back({ myTimeline[i] });
+        }
+        //  Numeraire needed only on last step
+        myDefline.back().numeraire = true;
+
+        //
+
+        //  Identify the product
+        ostringstream ost;
+        ost.precision(2);
+        ost << fixed;
+        ost << "tarf " << myMaturity << " " << myStrike;
+        myLabels[0] = ost.str();
+
+        /*ost << " " << Klower
+            << " " << Kupper
+            << " " <<
+            << " " << stepUpRatio
+            << " " << TARFTarget
+            << " monitoring freq " << monitorFreq;
+        myLabels[0] = ost.str();*/
+    }
+
+    //  Virtual copy constructor
+    unique_ptr<Product<T>> clone() const override
+    {
+        return make_unique<TARF<T>>(*this);
+    }
+
+    //  Timeline
+    const vector<Time>& timeline() const override
+    {
+        return myTimeline;
+    }
+
+    //  Defline
+    const vector<SampleDef>& defline() const override
+    {
+        return myDefline;
+    }
+
+    //  Labels
+    const vector<string>& payoffLabels() const override
+    {
+        return myLabels;
+    }
+
+    //  Payoff
+    void payoffs(
+        //  path, one entry per time step 
+        const Scenario<T>& path,
+        //  pre-allocated space for resulting payoffs
+        vector<T>& payoffs)
+        const override
+    {
+        T total(0.0);
+        T discounted_payoff(0.0);
+
+        //  Go through path, update alive status
+        for (const auto& sample : path)
+        {
+            const auto spot = sample.forwards.front().front();
+            if (myKKnockout <= spot)
+            {
+                break;
+            }
+            bool add_cashflow = false;
+            T cashflow(0.0);
+            if (myKUpper <= spot)
+            {
+                add_cashflow = true;
+                cashflow = spot - myStrike;
+            }
+            if (spot < myKLower)
+            {
+                add_cashflow = true;
+                cashflow = myStepUpRatio * (spot - myStrike);
+            }
+
+            if (add_cashflow)
+            {
+                if (total + cashflow >= myTARFTarget)
+                {
+                    cashflow = myTARFTarget - total;
+                    total += cashflow;
+                    discounted_payoff += cashflow / path.back().numeraire;
+                    break;
+                }
+                else
+                {
+                    total += cashflow;
+                    discounted_payoff += cashflow / path.back().numeraire;
+                }
+            }
+        }
+
+        payoffs[0] = discounted_payoff;
+    }
+};
+
