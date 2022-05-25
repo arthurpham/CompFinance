@@ -697,6 +697,66 @@ LPXLOPER12 xAADrisk(
 }
 
 extern "C" __declspec(dllexport)
+LPXLOPER12 xAADriskTime(
+    LPXLOPER12          modelid,
+    LPXLOPER12          productid,
+    LPXLOPER12          xRiskPayoff,
+    //  numerical parameters
+    double              useSobol,
+    double              seed1,
+    double              seed2,
+    double              numPath,
+    double              parallel)
+{
+    FreeAllTempMemory();
+
+    const string pid = getString(productid);
+    //  Make sure we have an id
+    if (pid.empty()) return TempErr12(xlerrNA);
+
+    const string mid = getString(modelid);
+    //  Make sure we have an id
+    if (mid.empty()) return TempErr12(xlerrNA);
+
+    //  Numerical params
+    const auto num = xl2num(useSobol, seed1, seed2, numPath, parallel);
+    //  Make sure we have a numPath
+    if (!num.numPath) return TempErr12(xlerrNA);
+
+    //  Risk payoff
+    const string riskPayoff = getString(xRiskPayoff);
+
+    try
+    {
+        clock_t t0 = clock();
+
+        auto results = AADriskOne(mid, pid, num, riskPayoff);
+        const size_t n = results.risks.size(), N = n + 1;
+
+        LPXLOPER12 oper = TempXLOPER12();
+        resize(oper, N+1, 2);
+
+        setString(oper, "value", 0, 0);
+        setNum(oper, results.riskPayoffValue, 0, 1);
+
+        for (size_t i = 0; i < n; ++i)
+        {
+            setString(oper, results.paramIds[i], i + 1, 0);
+            setNum(oper, results.risks[i], i + 1, 1);
+        }
+
+        clock_t t1 = clock();
+        setString(oper, "time", N, 0);
+        setNum(oper, t1 - t0, N, 1);
+        return oper;
+    }
+    catch (const exception&)
+    {
+        return TempErr12(xlerrNA);
+    }
+}
+
+extern "C" __declspec(dllexport)
 LPXLOPER12 xAADriskAggregate(
     LPXLOPER12          modelid,
     LPXLOPER12          productid,
@@ -1639,6 +1699,18 @@ extern "C" __declspec(dllexport) int xlAutoOpen(void)
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L""),
         (LPXLOPER12)TempStr12(L"Initializes a TARF in memory"),
+        (LPXLOPER12)TempStr12(L""));
+
+    Excel12f(xlfRegister, 0, 11, (LPXLOPER12)&xDLL,
+        (LPXLOPER12)TempStr12(L"xAADriskTime"),
+        (LPXLOPER12)TempStr12(L"QQQQBBBBB"),
+        (LPXLOPER12)TempStr12(L"xAADriskTime"),
+        (LPXLOPER12)TempStr12(L"modelId, productId, riskPayoff, useSobol, [seed1], [seed2], N, [Parallel]"),
+        (LPXLOPER12)TempStr12(L"1"),
+        (LPXLOPER12)TempStr12(L"myOwnCppFunctions"),
+        (LPXLOPER12)TempStr12(L""),
+        (LPXLOPER12)TempStr12(L""),
+        (LPXLOPER12)TempStr12(L"AAD risk report"),
         (LPXLOPER12)TempStr12(L""));
 
 	/* Free the XLL filename */
